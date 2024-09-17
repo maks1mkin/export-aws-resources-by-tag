@@ -1,6 +1,6 @@
 ---
 
-# AWS Resource Tagging Script by @mak_s1m_kin
+# AWS Resource Tagging Script 
 
 This script interacts with AWS services and a PostgreSQL database to fetch resource tags, process them, and store the relevant data in a PostgreSQL database.
 
@@ -77,5 +77,5 @@ Feel free to open issues or submit pull requests if you find bugs or have sugges
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
+Author: [@maks1mkin](https://github.com/maks1mkin)
 -----------
