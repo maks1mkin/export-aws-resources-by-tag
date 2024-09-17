@@ -12,8 +12,8 @@ This script interacts with AWS services and a PostgreSQL database to fetch resou
 
 ## Prerequisites
 
-- **Python 3.x**
-- **AWS Credentials**: Ensure that your AWS credentials are configured (e.g., via AWS CLI or environment variables).
+- **Python 3.9**
+- **AWS Credentials**: Ensure that your AWS credentials are configured (e.g., via AWS CLI - *aws configure* or environment variables).
 - **Python Packages**:
   - `boto3`: AWS SDK for Python.
   - `sqlalchemy`: SQL toolkit and Object-Relational Mapping (ORM) library.
