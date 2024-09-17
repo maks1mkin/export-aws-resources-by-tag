@@ -78,6 +78,4 @@ Feel free to open issues or submit pull requests if you find bugs or have sugges
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
----
-
-If there are any additional changes or sections you'd like to add, let me know!
+-----------
