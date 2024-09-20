@@ -130,6 +130,7 @@ def process_region(region):
     rds_client = boto3.client('rds', region_name=region)
     db_instances = rds_client.describe_db_instances().get('DBInstances', [])
     for db_instance in db_instances:
+        print(f"Processing RDS instance: {db_instance['DBInstanceIdentifier']}")   
         resource_id = extract_resource_id(db_instance['DBInstanceArn'], 'rds')
         tags = get_tags(rds_client, 'rds', db_instance['DBInstanceArn'])
         customer_name = next((tag['Value'] for tag in tags if tag['Key'] == customer_tag_key), 'Unknown')
