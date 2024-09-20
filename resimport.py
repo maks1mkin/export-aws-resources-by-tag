@@ -115,7 +115,7 @@ def process_region(region):
             if customer_name not in [None, 'Unknown']:
                 insert_to_db(customer_name, resource_id, 'ec2')
             else:
-                print(f"No valid customer tag found for instance {resource_id}, skipping...")
+                print(f"No valid customer tag found for ec2 instance {resource_id}, skipping...")
 
     # Process Load Balancers (ELB)
     elbv2_client = boto3.client('elbv2', region_name=region)
@@ -124,7 +124,10 @@ def process_region(region):
         resource_id = extract_resource_id(lb['LoadBalancerArn'], 'elb')
         tags = get_tags(elbv2_client, 'elb', lb['LoadBalancerArn'])
         customer_name = next((tag['Value'] for tag in tags if tag['Key'] == customer_tag_key), 'Unknown')
-        insert_to_db(customer_name, resource_id, 'elb')
+        if customer_name not in [None, 'Unknown']:
+                insert_to_db(customer_name, resource_id, 'elb')
+        else:
+                print(f"No valid customer tag found for elb {resource_id}, skipping...")
 
     # Process RDS Instances
     rds_client = boto3.client('rds', region_name=region)
@@ -134,7 +137,10 @@ def process_region(region):
         resource_id = extract_resource_id(db_instance['DBInstanceArn'], 'rds')
         tags = get_tags(rds_client, 'rds', db_instance['DBInstanceArn'])
         customer_name = next((tag['Value'] for tag in tags if tag['Key'] == customer_tag_key), 'Unknown')
-        insert_to_db(customer_name, resource_id, 'rds')
+        if customer_name not in [None, 'Unknown']:
+                insert_to_db(customer_name, resource_id, 'rds')
+        else:
+                print(f"No valid customer tag found for rds {resource_id}, skipping...")
 
     # Process ElastiCache Clusters
     elasticache_client = boto3.client('elasticache', region_name=region)
@@ -144,7 +150,10 @@ def process_region(region):
         arn = elasticache_client.describe_cache_clusters(CacheClusterId=cluster_id)['CacheClusters'][0]['ARN']
         tags = get_tags(elasticache_client, 'elasticache', arn)
         customer_name = next((tag['Value'] for tag in tags if tag['Key'] == customer_tag_key), 'Unknown')
-        insert_to_db(customer_name, cluster_id, 'elasticache')
+        if customer_name not in [None, 'Unknown']:
+                insert_to_db(customer_name, resource_id, 'elasticache')
+        else:
+                print(f"No valid customer tag found for elasticache {resource_id}, skipping...")
 
     # Process SQS Queues
     sqs_client = boto3.client('sqs', region_name=region)
@@ -159,10 +168,10 @@ def process_region(region):
         if customer_name not in [None, 'Unknown']:
             insert_to_db(customer_name, sqs_prefix, 'sqs_prefix')
         else:
-            print(f"No valid customer tag found for queue {queue_name}, skipping...")
+            print(f"No valid customer tag found for  sqs queue {queue_name}, skipping...")
 
 def main():
-     for region in aws_regions:
+    for region in aws_regions:
         process_region(region)
 
 if __name__ == '__main__':
