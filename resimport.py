@@ -37,13 +37,13 @@ def get_tags(client, resource_type, resource_id):
             tags = client.describe_tags(ResourceArns=[resource_id])['TagDescriptions'][0]['Tags']
         elif resource_type == 'elasticache':
             tags = client.list_tags_for_resource(ResourceName=resource_id)['TagList']
-        elif resource_type == 'sqs':
-            tags = client.list_queue_tags(QueueUrl=resource_id)['Tags']
-            tags = [{'Key': k, 'Value': v} for k, v in tags.items()]
         elif resource_type == 'rds':
             tags = client.list_tags_for_resource(ResourceName=resource_id)['TagList']
         elif resource_type == 'ec2':
             tags = client.describe_tags(Filters=[{'Name': 'resource-id', 'Values': [resource_id]}])['Tags']
+        elif resource_type == 'sqs':
+            tags = client.list_queue_tags(QueueUrl=resource_id).get('Tags', {})
+            return [{'Key': k, 'Value': v} for k, v in tags.items()]
         else:
             tags = []
     except Exception as e:
@@ -88,15 +88,19 @@ def insert_to_db(customer_name, resource_id, resource_type):
         print(f"SQLAlchemy Error: {e}")
 
 def extract_resource_id(arn, resource_type):
-    """Extract the resource part from ARN for ELB, retain SQS Queue URL."""
-    if resource_type == 'elb':
+    if resource_type == 'ec2':
+        return arn.split(':instance/')[1]
+    elif resource_type == 'elb':
         return arn.split('loadbalancer/')[1]
-    elif resource_type == 'sqs':
-        return arn.split('/')[-1]  # For SQS, retain only the queue name
     elif resource_type == 'rds':
-        return arn.split(':db:')[1]  # For RDS, retain the instance identifier
-    elif resource_type == 'ec2':
-        return arn.split(':instance/')[1]  # For EC2, retain the instance ID
+        return arn.split(':db:')[1]
+    elif resource_type == 'elasticache':
+        return arn.split(':cluster:')[1]
+    elif resource_type == 'sqs':
+         queue_name = arn.split('/')[-1]  # Extract the queue name from URL
+         if '--' in queue_name:
+            queue_name = queue_name.split('--')[0]
+            return queue_name
     return arn
 
 def process_region(region):
@@ -112,10 +116,8 @@ def process_region(region):
             arn = f"arn:aws:ec2:{region}::{resource_id}"
             tags = get_tags(ec2_client, 'ec2', resource_id)
             customer_name = next((tag['Value'] for tag in tags if tag['Key'] == customer_tag_key), 'Unknown')
-            if customer_name not in [None, 'Unknown']:
-                insert_to_db(customer_name, resource_id, 'ec2')
-            else:
-                print(f"No valid customer tag found for ec2 instance {resource_id}, skipping...")
+            insert_to_db(customer_name, resource_id, 'ec2')
+
 
     # Process Load Balancers (ELB)
     elbv2_client = boto3.client('elbv2', region_name=region)
@@ -124,10 +126,8 @@ def process_region(region):
         resource_id = extract_resource_id(lb['LoadBalancerArn'], 'elb')
         tags = get_tags(elbv2_client, 'elb', lb['LoadBalancerArn'])
         customer_name = next((tag['Value'] for tag in tags if tag['Key'] == customer_tag_key), 'Unknown')
-        if customer_name not in [None, 'Unknown']:
-                insert_to_db(customer_name, resource_id, 'elb')
-        else:
-                print(f"No valid customer tag found for elb {resource_id}, skipping...")
+        insert_to_db(customer_name, resource_id, 'elb')
+
 
     # Process RDS Instances
     rds_client = boto3.client('rds', region_name=region)
@@ -137,10 +137,8 @@ def process_region(region):
         resource_id = extract_resource_id(db_instance['DBInstanceArn'], 'rds')
         tags = get_tags(rds_client, 'rds', db_instance['DBInstanceArn'])
         customer_name = next((tag['Value'] for tag in tags if tag['Key'] == customer_tag_key), 'Unknown')
-        if customer_name not in [None, 'Unknown']:
-                insert_to_db(customer_name, resource_id, 'rds')
-        else:
-                print(f"No valid customer tag found for rds {resource_id}, skipping...")
+        insert_to_db(customer_name, resource_id, 'rds')
+       
 
     # Process ElastiCache Clusters
     elasticache_client = boto3.client('elasticache', region_name=region)
@@ -150,10 +148,7 @@ def process_region(region):
         arn = elasticache_client.describe_cache_clusters(CacheClusterId=cluster_id)['CacheClusters'][0]['ARN']
         tags = get_tags(elasticache_client, 'elasticache', arn)
         customer_name = next((tag['Value'] for tag in tags if tag['Key'] == customer_tag_key), 'Unknown')
-        if customer_name not in [None, 'Unknown']:
-                insert_to_db(customer_name, resource_id, 'elasticache')
-        else:
-                print(f"No valid customer tag found for elasticache {resource_id}, skipping...")
+        insert_to_db(customer_name, cluster_id, 'elasticache')
 
     # Process SQS Queues
     sqs_client = boto3.client('sqs', region_name=region)
@@ -168,7 +163,9 @@ def process_region(region):
         if customer_name not in [None, 'Unknown']:
             insert_to_db(customer_name, sqs_prefix, 'sqs_prefix')
         else:
-            print(f"No valid customer tag found for  sqs queue {queue_name}, skipping...")
+             print(f"No valid customer tag found for  sqs queue {queue_name}, skipping...")
+
+
 
 def main():
     for region in aws_regions:
