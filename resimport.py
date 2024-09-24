@@ -16,11 +16,11 @@ metadata = MetaData()
 # Define and create the table if it doesn't exist
 resources_table = Table(table_name, metadata,
                         Column('id', Integer, primary_key=True, autoincrement=True),
-                        Column('customer_alias', String(255), unique=False),
+                        Column('customer_alias', String(255)),
                         Column('customer_name', String(255)),
                         Column('resource_type', String(50)),
                         Column('resource_id', String(255)),
-                        UniqueConstraint('customer_alias', 'resource_id', name='uix_customer_resource'))
+                        UniqueConstraint('customer_alias','resource_id', 'resource_type', name='uix_customer_resource'))
 metadata.create_all(engine)
 
 Session = sessionmaker(bind=engine)
@@ -42,8 +42,8 @@ def get_tags(client, resource_type, resource_id):
         elif resource_type == 'ec2':
             tags = client.describe_tags(Filters=[{'Name': 'resource-id', 'Values': [resource_id]}])['Tags']
         elif resource_type == 'sqs':
-            tags = client.list_queue_tags(QueueUrl=resource_id).get('Tags', {})
-            return [{'Key': k, 'Value': v} for k, v in tags.items()]
+            tags = client.list_queue_tags(QueueUrl=resource_id)['Tags']
+            tags = [{'Key': k, 'Value': v} for k, v in tags.items()]
         else:
             tags = []
     except Exception as e:
@@ -54,13 +54,13 @@ def get_tags(client, resource_type, resource_id):
 def insert_to_db(customer_name, resource_id, resource_type):
     """Insert resource into the database."""
     # Check if customer_name or customer_alias is 'Unknown'
-    if customer_name in [None, 'Unknown']:
+    if customer_name in [None, 'Unknown', 'Rallyware']:
         print(f"Skipping insertion for resource {resource_id} due to invalid customer name")
         return
 
     # Generate customer alias
     customer_alias = format_customer_alias(customer_name)
-    if customer_alias in [None, 'Unknown']:
+    if customer_alias in [None, 'Unknown','rallyware']:
         print(f"Skipping insertion for resource {resource_id} due to invalid customer alias")
         return
 
@@ -68,7 +68,7 @@ def insert_to_db(customer_name, resource_id, resource_type):
     sql_statement = text("""
         INSERT INTO aws_resources (customer_alias, customer_name, resource_type, resource_id)
         VALUES (:customer_alias, :customer_name, :resource_type, :resource_id)
-        ON CONFLICT (customer_alias, resource_id) DO UPDATE
+        ON CONFLICT (customer_alias, resource_id, resource_type) DO UPDATE
             SET customer_name = EXCLUDED.customer_name,
                 resource_type = EXCLUDED.resource_type
     """)
@@ -136,7 +136,7 @@ def process_region(region):
         print(f"Processing RDS instance: {db_instance['DBInstanceIdentifier']}")   
         resource_id = extract_resource_id(db_instance['DBInstanceArn'], 'rds')
         tags = get_tags(rds_client, 'rds', db_instance['DBInstanceArn'])
-        customer_name = next((tag['Value'] for tag in tags if tag['Key'] == customer_tag_key), 'Unknown')
+        customer_name = next((tag['Value'] for tag in tags if tag['Key'] == customer_tag_key), 'Unknown')    
         insert_to_db(customer_name, resource_id, 'rds')
        
 
@@ -150,23 +150,26 @@ def process_region(region):
         customer_name = next((tag['Value'] for tag in tags if tag['Key'] == customer_tag_key), 'Unknown')
         insert_to_db(customer_name, cluster_id, 'elasticache')
 
+
     # Process SQS Queues
     sqs_client = boto3.client('sqs', region_name=region)
+
+    # Отримуємо всі черги в регіоні
     sqs_queues = sqs_client.list_queues().get('QueueUrls', [])
+
+    # Лог про кількість черг, знайдених у регіоні
+    print(f"Found {len(sqs_queues)} queues in region {region}")
     for queue_url in sqs_queues:
         queue_name = queue_url.split('/')[-1]
-        if queue_name.startswith('s_id_by_number--sqs'):
-            continue
-        sqs_prefix = queue_name.split('--')[0]
         tags = get_tags(sqs_client, 'sqs', queue_url)
-        customer_name = next((tag['Value'] for tag in tags if tag['Key'] == customer_tag_key), 'Unknown')
-        if customer_name not in [None, 'Unknown']:
+        customer_name = next((tag['Value'] for tag in tags if tag['Key'] == customer_tag_key), None)
+        if customer_name:
+            sqs_prefix = queue_name.split('--')[0] if '--' in queue_name else queue_name
             insert_to_db(customer_name, sqs_prefix, 'sqs_prefix')
+            print(f"Inserted queue {queue_name} with customer {customer_name} into the database.")
         else:
-             print(f"No valid customer tag found for  sqs queue {queue_name}, skipping...")
-
-
-
+            print(f"No valid customer tag found for queue {queue_name}, skipping...")
+ 
 def main():
     for region in aws_regions:
         process_region(region)
