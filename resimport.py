@@ -154,10 +154,8 @@ def process_region(region):
     # Process SQS Queues
     sqs_client = boto3.client('sqs', region_name=region)
 
-    # Отримуємо всі черги в регіоні
     sqs_queues = sqs_client.list_queues().get('QueueUrls', [])
 
-    # Лог про кількість черг, знайдених у регіоні
     print(f"Found {len(sqs_queues)} queues in region {region}")
     for queue_url in sqs_queues:
         queue_name = queue_url.split('/')[-1]
